@@ -1,0 +1,306 @@
+﻿Nama : Muhammad Fu’ad Saifuddin
+Email : muh.fuad.saifuddin@gmail.com
+Github : https://github.com/fuad-saifuddin 
+
+
+MINI PROJECT 1 
+Analyzing eCommerce Business Performance with SQL
+
+I -  Data Preparation and Exploratory
+Code :
+1. customers_dataset
+
+	SELECT * FROM customers_dataset LIMIT (10);        
+	(untuk mengetahui kolom tabel dan contoh format data pada masing2 tabel)
+
+	SELECT COUNT(*) FROM customers_dataset;
+	(untuk mengetahui jumlah baris)
+
+2. sellers_dataset
+
+	SELECT * FROM sellers_dataset LIMIT (10);        
+	(untuk mengetahui kolom tabel dan contoh format data pada masing2 tabel)
+
+	SELECT COUNT(*) FROM sellers_dataset;
+	(untuk mengetahui jumlah baris)
+
+3. product_dataset
+
+	SELECT * FROM product_dataset LIMIT (10);        
+	(untuk mengetahui kolom tabel dan contoh format data pada masing2 tabel)
+
+	SELECT COUNT(*) FROM product_dataset;
+	(untuk mengetahui jumlah baris)
+
+4. geolocation_dataset
+
+	SELECT * FROM geolocation_dataset LIMIT (10);        
+	(untuk mengetahui kolom tabel dan contoh format data pada masing2 tabel)
+
+	SELECT COUNT(*) FROM geolocation_dataset;
+	(untuk mengetahui jumlah baris)
+
+5. orders_dataset
+
+	SELECT * FROM orders_dataset LIMIT (10);        
+	(untuk mengetahui kolom tabel dan contoh format data pada masing2 tabel)
+
+	SELECT COUNT(*) FROM orders_dataset;
+	(untuk mengetahui jumlah baris)
+
+6. order_items_dataset
+
+	SELECT * FROM order_items_dataset LIMIT (10);        
+	(untuk mengetahui kolom tabel dan contoh format data pada masing2 tabel)
+
+	SELECT COUNT(*) FROM order_items_dataset;
+	(untuk mengetahui jumlah baris)
+
+7. order_reviews_dataset
+
+	SELECT * FROM order_reviews_dataset LIMIT (10);        
+	(untuk mengetahui kolom tabel dan contoh format data pada masing2 tabel)
+
+	SELECT COUNT(*) FROM order_reviews_dataset;
+	(untuk mengetahui jumlah baris)
+
+8. order_payments_dataset
+
+	SELECT * FROM order_payments_dataset LIMIT (10);        
+	(untuk mengetahui kolom tabel dan contoh format data pada masing2 tabel)
+
+	SELECT COUNT(*) FROM order_payments_dataset;
+	(untuk mengetahui jumlah baris)
+	
+	
+II -  Annual Customer Activity Growth Analysis
+1. Membuat tabel yang berisikan rangkuman data aktivitas customer, meliputi rata-rata jumlah customer aktif, jumlah customer baru, dan rata-rata frequensi order untuk masing-masing customer per tahunya.
+    
+	WITH result_1 AS(
+		WITH monthly_active_user AS (
+			SELECT 
+				COUNT (DISTINCT customer_id) AS number_active_user,
+				DATE_PART('year',order_purchase_timestamp) AS order_year,
+				DATE_PART('month',order_purchase_timestamp) AS order_month
+			FROM
+				orders_dataset
+			GROUP BY
+				order_year, order_month)
+		SELECT
+			order_year,
+			ROUND(AVG (number_active_user)) AS average_monthly_active_user
+		FROM monthly_active_user
+		GROUP BY order_year
+	),
+	result_2 AS(
+		WITH customer_2016 AS(
+			SELECT
+				DISTINCT customer_id,
+				DATE_PART('year',order_purchase_timestamp) AS order_year
+			FROM
+				orders_dataset
+			WHERE 
+				DATE_PART('year',order_purchase_timestamp)=2016
+		),
+		customer_2017 AS(
+			SELECT
+				DISTINCT customer_id,
+				DATE_PART('year',order_purchase_timestamp) AS order_year
+			FROM
+				orders_dataset
+			WHERE
+				DATE_PART('year',order_purchase_timestamp)=2017
+		),
+		customer_2018 AS(
+			SELECT
+				DISTINCT customer_id,
+				DATE_PART('year',order_purchase_timestamp) AS order_year
+			FROM
+				orders_dataset
+			WHERE
+				DATE_PART('year',order_purchase_timestamp)=2018
+        )
+		SELECT
+			order_year,
+			COUNT (customer_id) AS number_new_customer
+		FROM(
+			SELECT
+				new_16.*
+			FROM customer_2016 new_16
+			UNION
+			SELECT
+				new_17.*
+			FROM customer_2017 new_17
+			WHERE 
+				(new_17.customer_id NOT IN
+				(SELECT customer_id FROM customer_2016))
+			UNION
+			SELECT
+				new_18.*
+			FROM customer_2018 new_18
+			WHERE 
+				(new_18.customer_id NOT IN 
+				(SELECT customer_id FROM customer_2016 
+				UNION
+				SELECT customer_id FROM customer_2017))
+		)AS new_customer
+		GROUP BY order_year
+		ORDER BY order_year
+	),
+	result_3 AS(
+		WITH order_frequency AS(
+			SELECT
+				customer_id,
+				DATE_PART('year',order_purchase_timestamp) AS order_year,
+			COUNT (order_id) AS number_orders
+			FROM orders_dataset
+			GROUP BY order_year, customer_id
+			ORDER BY order_year
+		)
+		SELECT
+			order_year,
+			ROUND(AVG (number_orders)) AS average_order_freq
+		FROM order_frequency
+		GROUP BY order_year
+		ORDER BY order_year
+	)
+	SELECT
+		result_1.order_year AS _year_,
+		average_monthly_active_user,
+		number_new_customer,
+		average_order_freq
+	FROM
+		result_1
+		JOIN result_2
+		ON result_1.order_year = result_2.order_year
+		JOIN result_3
+		ON result_1.order_year = result_3.order_year;
+
+
+2. Membuat tabel untuk analisa lebih lanjut jumlah active user/customer untuk setiap bulannya
+
+	SELECT  
+        DATE_PART('year',order_purchase_timestamp) AS order_year,
+        DATE_PART('month',order_purchase_timestamp) AS order_month,
+        COUNT (DISTINCT customer_id) AS number_active_user
+	FROM 
+        orders_dataset
+	GROUP BY
+        order_year, order_month;
+
+
+III -  Annual Product Category Quality Analysis
+1. Membuat temporary tabel berisikan data yang akan digunakan untuk analisa kualitas kategori produk 
+
+CREATE TEMP TABLE analysis_product ON COMMIT DROP AS (
+	SELECT
+        item.order_id,
+        item.product_id,
+        item.price,
+        item.freight_value,
+        item.price + item.freight_value AS revenue,
+        orders.order_status,
+        orders.order_purchase_timestamp,
+        DATE_PART('year',orders.order_purchase_timestamp) AS order_year,
+        product.product_category_name
+	FROM 
+		order_items_dataset item 
+	LEFT JOIN orders_dataset orders
+	ON item.order_id = orders.order_id
+	LEFT JOIN product_dataset product
+	ON item.product_id = product.product_id
+	ORDER BY order_id
+);
+
+
+2. Menghitung jumlah revenue yang didapatkan per tahun dan jumlah canceled produk per tahunnya untuk melihat gambaran keseluruhan performa penjualan dari tabel temporary analysis_product diatas.
+
+	SELECT 
+        revenue_data.order_year AS _year_,
+        revenue_data.annual_revenue,
+        canceled_data.number_order_canceled
+	FROM 
+		(SELECT 
+			order_year,
+			SUM(revenue) AS annual_revenue
+		FROM analysis_product
+		GROUP BY order_year,order_status
+		HAVING order_status = 'delivered') revenue_data
+		FULL OUTER JOIN 
+			(SELECT 
+			order_year,
+			COUNT (DISTINCT order_id) AS number_order_canceled
+			FROM analysis_product
+			GROUP BY order_year,order_status
+			HAVING order_status = 'canceled') canceled_data
+		ON revenue_data.order_year = canceled_data.order_year;
+
+
+3. Menganalisa jumlah canceled order per kategori produk per tahun untuk menentukan 5 kategori produk yang paling banyak dibatalkan pembeliannya per tahunnya.
+
+	SELECT *
+	FROM(
+		SELECT 
+			order_year,
+			product_category_name,
+			COUNT (DISTINCT order_id) AS canceled_number,
+			RANK () OVER (
+							PARTITION BY order_year
+							ORDER BY COUNT (DISTINCT order_id) DESC
+			) canceled_rank
+		FROM analysis_product
+		GROUP BY order_year,product_category_name,order_status
+		HAVING order_status = 'canceled' AND product_category_name IS NOT NULL) canceled_data
+	WHERE canceled_data.canceled_rank <=5;
+
+
+4. Menganalisa annual revenue yang didapatkan dari penjualan per kategori produk setiap tahun untuk menentukan 5 kategori produk yang menghasilkan revenue terbanyak.
+
+	SELECT *
+	FROM (
+		SELECT 
+			order_year,
+			product_category_name,
+			SUM (revenue) AS annual_revenue,
+			RANK () OVER (
+							PARTITION BY order_year
+							ORDER BY SUM (revenue) DESC
+			) revenue_rank
+		FROM analysis_product
+		GROUP BY order_year,product_category_name,order_status
+		HAVING order_status = 'canceled' AND product_category_name IS NOT NULL) revenue_data
+	WHERE revenue_data.revenue_rank <=5;
+	
+IV -  Annual Payment Type Usage
+1. Membuat tabel yang berisikan jumlah seluruh transaksi per metode pembayaran untuk mengetahui metode pembayaran paling banyak digunakna oleh pelanggan.
+
+	SELECT
+        pay.payment_type,
+        COUNT(DISTINCT orders.order_id) AS number_transaction
+	FROM orders_dataset orders
+	LEFT JOIN order_payments_dataset pay
+	ON orders.order_id = pay.order_id
+	GROUP BY payment_type
+	ORDER BY number_transaction DESC;
+
+2. Menganalisa lebih lanjut jumlah transaksi per metode pembayaran per tahun untuk mengetahui tren jenis pembayaran per tahunnya.
+
+	WITH payment_analysis AS(
+		SELECT
+			orders.order_id,
+			DATE_PART('year',orders.order_purchase_timestamp) AS order_year,
+			pay.payment_type
+		FROM orders_dataset orders
+		LEFT JOIN order_payments_dataset pay
+		ON orders.order_id = pay.order_id
+	)
+	SELECT 
+		order_year,
+		SUM (CASE WHEN payment_type = 'credit_card' THEN 1 ELSE 0 END) AS credit_card,
+		SUM (CASE WHEN payment_type = 'boleto' THEN 1 ELSE 0 END) AS boleto,
+		SUM (CASE WHEN payment_type = 'voucher' THEN 1 ELSE 0 END) AS voucher,
+		SUM (CASE WHEN payment_type = 'debit_card' THEN 1 ELSE 0 END) AS debit_card,
+		SUM (CASE WHEN payment_type = 'not_defined' THEN 1 ELSE 0 END) AS not_defined
+	FROM payment_analysis
+	GROUP BY order_year
+	ORDER BY order_year;
